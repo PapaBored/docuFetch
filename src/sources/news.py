@@ -10,6 +10,7 @@ from datetime import datetime
 import newspaper
 from newspaper import Article
 from newspaper import news_pool
+from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
 
@@ -17,16 +18,18 @@ logger = logging.getLogger(__name__)
 class NewsSource:
     """News article source using newspaper3k."""
     
-    def __init__(self, download_dir, max_results=50):
+    def __init__(self, download_dir, max_results=50, news_sources_count=5):
         """
         Initialize the news source.
         
         Args:
             download_dir: Directory to save downloaded articles
             max_results: Maximum number of results to return
+            news_sources_count: Number of news sources to use (1-10)
         """
         self.download_dir = Path(download_dir)
         self.max_results = max_results
+        self.news_sources_count = min(10, max(1, news_sources_count))
         
         # Create download directory
         os.makedirs(self.download_dir, exist_ok=True)
@@ -36,7 +39,7 @@ class NewsSource:
         os.makedirs(self.metadata_dir, exist_ok=True)
         
         # Popular news sources
-        self.news_sources = [
+        self.all_news_sources = [
             'https://www.bbc.com',
             'https://www.cnn.com',
             'https://www.reuters.com',
@@ -48,6 +51,10 @@ class NewsSource:
             'https://www.forbes.com',
             'https://techcrunch.com'
         ]
+        
+        # Use only the specified number of news sources
+        self.news_sources = self.all_news_sources[:self.news_sources_count]
+        logger.info(f"Using {len(self.news_sources)} news sources: {', '.join(self.news_sources)}")
     
     def fetch(self, keyword, preview_mode=False):
         """
@@ -87,15 +94,26 @@ class NewsSource:
         
         try:
             # Build newspaper objects for each source
-            papers = [newspaper.build(source, memoize_articles=False) for source in self.news_sources]
+            logger.info(f"Building news sources (this may take a moment)...")
+            papers = []
+            for source in tqdm(self.news_sources, desc="Building news sources"):
+                try:
+                    paper = newspaper.build(source, memoize_articles=False, language='en')
+                    papers.append(paper)
+                except Exception as e:
+                    logger.warning(f"Error building news source {source}: {str(e)}")
             
             # Download articles in parallel
+            logger.info(f"Downloading articles from {len(papers)} news sources...")
             news_pool.set(papers, threads_per_source=2)
             news_pool.join()
             
             # Search for articles containing the keyword
-            for paper in papers:
-                for article in paper.articles:
+            logger.info(f"Searching for articles containing '{keyword}'...")
+            for paper_idx, paper in enumerate(papers):
+                logger.debug(f"Searching source {paper_idx+1}/{len(papers)}: {paper.brand or 'Unknown'}")
+                
+                for article in tqdm(paper.articles, desc=f"Searching {paper.brand or 'Unknown'}", leave=False):
                     if len(results) >= self.max_results:
                         break
                     

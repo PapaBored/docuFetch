@@ -82,7 +82,8 @@ class DocuFetch:
                 },
                 "update_interval": 12,  # hours
                 "max_results_per_source": 50,
-                "download_pdfs": True
+                "download_pdfs": True,
+                "news_sources_count": 5
             }
             
             with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
@@ -112,6 +113,10 @@ class DocuFetch:
                     "doaj_api_key": "",
                     "semantic_scholar": ""
                 }
+            
+            # Add news sources count if it doesn't exist
+            if "news_sources_count" not in config:
+                config["news_sources_count"] = 5
             
             logger.info(f"Loaded configuration from {CONFIG_FILE}")
             return config
@@ -217,6 +222,7 @@ class DocuFetch:
         if "news" in self.config["sources"]:
             status = f"{Fore.GREEN}Enabled" if self.config["sources"]["news"] else f"{Fore.RED}Disabled"
             print(f"{Fore.CYAN}  - news: {status}")
+            print(f"{Fore.CYAN}    Number of news sources: {self.config['news_sources_count']}")
     
     def set_api_key(self, source, api_key):
         """Set API key for a source."""
@@ -238,7 +244,17 @@ class DocuFetch:
         self._save_config()
         print(f"{Fore.GREEN}Set update interval to {hours} hours.")
     
-    def preview_documents(self):
+    def set_news_sources_count(self, count):
+        """Set the number of news sources to use."""
+        if count < 1 or count > 10:
+            print(f"{Fore.RED}Invalid number of news sources. Please specify a number between 1 and 10.")
+            return
+        
+        self.config["news_sources_count"] = count
+        self._save_config()
+        print(f"{Fore.GREEN}Set number of news sources to {count}.")
+    
+    def preview_documents(self, academic_only=False, news_only=False):
         """Preview documents from all sources based on keywords."""
         if not self.config.get("keywords", []):
             print(f"{Fore.YELLOW}No keywords configured. Use 'add' command to add keywords.")
@@ -246,8 +262,17 @@ class DocuFetch:
         
         print(f"{Fore.CYAN}Previewing documents for keywords: {', '.join(self.config['keywords'])}")
         
+        # Determine source type based on flags
+        source_type = None
+        if academic_only:
+            source_type = 'academic'
+            print(f"{Fore.CYAN}Searching only academic sources")
+        elif news_only:
+            source_type = 'news'
+            print(f"{Fore.CYAN}Searching only news sources")
+        
         # Preview documents
-        preview_results = self.source_manager.preview_documents(self.config["keywords"])
+        preview_results = self.source_manager.preview_documents(self.config["keywords"], source_type)
         
         # Display results
         total_documents = sum(preview_results.values())
@@ -286,11 +311,11 @@ class DocuFetch:
         
         if user_input.lower() in ["y", "yes"]:
             print(f"{Fore.GREEN}Starting download...")
-            self.fetch_documents(skip_preview=True)
+            self.fetch_documents(academic_only, news_only, skip_preview=True)
         else:
             print(f"{Fore.YELLOW}Download canceled.")
     
-    def fetch_documents(self, skip_preview=False):
+    def fetch_documents(self, academic_only=False, news_only=False, skip_preview=False):
         """Fetch documents from all sources based on keywords."""
         if not self.config.get("keywords", []):
             print(f"{Fore.YELLOW}No keywords configured. Use 'add' command to add keywords.")
@@ -298,13 +323,22 @@ class DocuFetch:
         
         if not skip_preview:
             # Show preview first
-            self.preview_documents()
+            self.preview_documents(academic_only, news_only)
             return
+        
+        # Determine source type based on flags
+        source_type = None
+        if academic_only:
+            source_type = 'academic'
+            print(f"{Fore.CYAN}Searching only academic sources")
+        elif news_only:
+            source_type = 'news'
+            print(f"{Fore.CYAN}Searching only news sources")
         
         print(f"{Fore.CYAN}Fetching documents for keywords: {', '.join(self.config['keywords'])}")
         
         # Fetch documents
-        results = self.source_manager.fetch_documents(self.config["keywords"])
+        results = self.source_manager.fetch_documents(self.config["keywords"], False, source_type)
         
         # Display results
         total_documents = sum(len(docs) for source_name, docs in results.items())
@@ -314,18 +348,25 @@ class DocuFetch:
         else:
             print(f"{Fore.GREEN}Downloaded {total_documents} documents.")
     
-    def start_monitoring(self):
+    def start_monitoring(self, academic_only=False, news_only=False):
         """Start monitoring for new documents at regular intervals."""
         interval_hours = self.config["update_interval"]
         
-        print(f"{Fore.CYAN}Starting document monitoring. Will check every {interval_hours} hours.")
+        # Determine source type based on flags
+        source_type_desc = "all sources"
+        if academic_only:
+            source_type_desc = "academic sources only"
+        elif news_only:
+            source_type_desc = "news sources only"
+        
+        print(f"{Fore.CYAN}Starting document monitoring on {source_type_desc}. Will check every {interval_hours} hours.")
         print(f"{Fore.CYAN}Press Ctrl+C to stop.")
         
         # Schedule the fetch job
-        schedule.every(interval_hours).hours.do(self.fetch_documents)
+        schedule.every(interval_hours).hours.do(self.fetch_documents, academic_only, news_only, True)
         
         # Run once immediately
-        self.fetch_documents()
+        self.fetch_documents(academic_only, news_only, True)
         
         # Keep running until interrupted
         try:
@@ -430,6 +471,7 @@ def parse_args():
     sources_parser.add_argument("--no-scholar", dest="scholar", action="store_false", help="Disable Google Scholar")
     sources_parser.add_argument("--news", dest="news", action="store_true", help="Enable news sources")
     sources_parser.add_argument("--no-news", dest="news", action="store_false", help="Disable news sources")
+    sources_parser.add_argument("--news-sources", dest="news_sources_count", type=int, help="Number of news sources to use (1-10)")
     sources_parser.add_argument("--semantic-scholar", dest="semantic_scholar", action="store_true", help="Enable Semantic Scholar")
     sources_parser.add_argument("--no-semantic-scholar", dest="semantic_scholar", action="store_false", help="Disable Semantic Scholar")
     sources_parser.add_argument("--core", dest="core", action="store_true", help="Enable CORE")
@@ -457,16 +499,22 @@ def parse_args():
     interval_parser.add_argument("hours", type=int, help="Update interval in hours")
     
     # Fetch documents
-    subparsers.add_parser("fetch", help="Manually trigger document discovery")
+    fetch_parser = subparsers.add_parser("fetch", help="Manually trigger document discovery")
+    fetch_parser.add_argument("--academic-only", action="store_true", help="Search only in academic sources")
+    fetch_parser.add_argument("--news-only", action="store_true", help="Search only in news sources")
     
     # Start monitoring
-    subparsers.add_parser("monitor", help="Start continuous monitoring")
+    monitor_parser = subparsers.add_parser("monitor", help="Start continuous monitoring")
+    monitor_parser.add_argument("--academic-only", action="store_true", help="Monitor only academic sources")
+    monitor_parser.add_argument("--news-only", action="store_true", help="Monitor only news sources")
     
     # Show statistics
     subparsers.add_parser("stats", help="Show download statistics")
     
     # Preview documents
-    subparsers.add_parser("preview", help="Preview documents")
+    preview_parser = subparsers.add_parser("preview", help="Preview documents")
+    preview_parser.add_argument("--academic-only", action="store_true", help="Preview only academic sources")
+    preview_parser.add_argument("--news-only", action="store_true", help="Preview only news sources")
     
     # Open downloads directory
     subparsers.add_parser("open", help="Open downloads directory")
@@ -512,6 +560,9 @@ def main():
                 docufetch.update_sources(sources_config)
             else:
                 docufetch.list_sources()
+        
+        if hasattr(args, "news_sources_count"):
+            docufetch.set_news_sources_count(args.news_sources_count)
     
     elif args.command == "api":
         docufetch.set_api_key(args.source, args.key)
@@ -520,16 +571,16 @@ def main():
         docufetch.set_update_interval(args.hours)
     
     elif args.command == "fetch":
-        docufetch.fetch_documents()
+        docufetch.fetch_documents(academic_only=args.academic_only, news_only=args.news_only)
     
     elif args.command == "monitor":
-        docufetch.start_monitoring()
+        docufetch.start_monitoring(academic_only=args.academic_only, news_only=args.news_only)
     
     elif args.command == "stats":
         docufetch.show_stats()
     
     elif args.command == "preview":
-        docufetch.preview_documents()
+        docufetch.preview_documents(academic_only=args.academic_only, news_only=args.news_only)
     
     elif args.command == "open":
         docufetch.open_downloads_directory()

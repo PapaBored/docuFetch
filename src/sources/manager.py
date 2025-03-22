@@ -5,9 +5,11 @@ Source manager for DocuFetch.
 import os
 import logging
 from pathlib import Path
-from .academic import ArxivSource, ScholarSource
-from .academic_extended import SemanticScholarSource, CoreSource, CrossrefSource
-from .academic_extended_v2 import UnpaywallSource, PubMedSource, DOAJSource, OpenAIRESource
+from .academic import (
+    ArxivSource, ScholarSource, 
+    SemanticScholarSource, CoreSource, CrossrefSource,
+    UnpaywallSource, PubMedSource, DOAJSource, OpenAIRESource
+)
 from .news import NewsSource
 
 logger = logging.getLogger(__name__)
@@ -123,17 +125,20 @@ class SourceManager:
         # News sources
         if self.config.get("sources", {}).get("news", True):
             news_dir = self.base_download_dir / "news"
+            news_sources_count = min(10, max(1, self.config.get("news_sources_count", 5)))
             self.sources["news"] = NewsSource(
                 download_dir=news_dir,
-                max_results=max_results
+                max_results=max_results,
+                news_sources_count=news_sources_count
             )
     
-    def preview_documents(self, keywords):
+    def preview_documents(self, keywords, source_type=None):
         """
-        Preview documents from all sources without downloading.
+        Preview documents from sources without downloading.
         
         Args:
             keywords: List of keywords to search for
+            source_type: Type of sources to search (None for all, 'academic' for academic sources, 'news' for news sources)
             
         Returns:
             dict: Dictionary with source names as keys and number of documents as values
@@ -145,6 +150,12 @@ class SourceManager:
         preview_results = {}
         
         for source_name, source in self.sources.items():
+            # Skip sources that don't match the requested type
+            if source_type == 'academic' and source_name == 'news':
+                continue
+            if source_type == 'news' and source_name != 'news':
+                continue
+                
             try:
                 # Set preview mode to True to count documents without downloading
                 documents = source.fetch(keywords, preview_mode=True)
@@ -156,13 +167,14 @@ class SourceManager:
         
         return preview_results
     
-    def fetch_documents(self, keywords, preview_first=False):
+    def fetch_documents(self, keywords, preview_first=False, source_type=None):
         """
-        Fetch documents from all sources.
+        Fetch documents from sources.
         
         Args:
             keywords: List of keywords to search for
             preview_first: If True, show preview and ask for confirmation before downloading
+            source_type: Type of sources to search (None for all, 'academic' for academic sources, 'news' for news sources)
             
         Returns:
             dict: Dictionary with source names as keys and lists of documents as values
@@ -172,7 +184,7 @@ class SourceManager:
             return {}
         
         if preview_first:
-            preview_results = self.preview_documents(keywords)
+            preview_results = self.preview_documents(keywords, source_type)
             total_documents = sum(preview_results.values())
             
             if total_documents == 0:
@@ -184,6 +196,12 @@ class SourceManager:
         results = {}
         
         for source_name, source in self.sources.items():
+            # Skip sources that don't match the requested type
+            if source_type == 'academic' and source_name == 'news':
+                continue
+            if source_type == 'news' and source_name != 'news':
+                continue
+                
             try:
                 documents = source.fetch(keywords)
                 results[source_name] = documents

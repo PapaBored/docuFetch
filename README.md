@@ -18,6 +18,7 @@ DocuFetch is an intelligent document harvesting tool designed to automatically d
     - OpenAIRE
   - **News Sources**:
     - Various news websites via newspaper3k
+- **Selective API Search**: Choose to search only academic sources, only news sources, or both
 - Advanced deduplication mechanism
 - Configurable update intervals
 - Document statistics tracking
@@ -66,15 +67,21 @@ python src/main.py interval 24
 
 # Manually trigger document discovery (with preview)
 python src/main.py fetch
+python src/main.py fetch --academic-only  # Search only academic sources
+python src/main.py fetch --news-only      # Search only news sources
 
 # Preview documents without downloading
 python src/main.py preview
+python src/main.py preview --academic-only  # Preview only academic sources
+python src/main.py preview --news-only      # Preview only news sources
 
 # Open downloads directory
 python src/main.py open
 
 # Start continuous monitoring
 python src/main.py monitor
+python src/main.py monitor --academic-only  # Monitor only academic sources
+python src/main.py monitor --news-only      # Monitor only news sources
 
 # Show download statistics
 python src/main.py stats
@@ -88,8 +95,7 @@ docuFetch/
 │   ├── main.py                # Entry point and CLI interface
 │   ├── sources/               # Document source implementations
 │   │   ├── __init__.py
-│   │   ├── academic.py        # Basic academic paper sources (arXiv, Scholar)
-│   │   ├── academic_extended.py # Extended academic sources (Semantic Scholar, CORE, Crossref, Unpaywall, PubMed, DOAJ, OpenAIRE)
+│   │   ├── academic.py        # Consolidated academic paper sources
 │   │   ├── news.py            # News article sources
 │   │   └── manager.py         # Source management
 │   └── utils.py               # Utility functions
@@ -156,6 +162,12 @@ Some sources require API keys or email addresses for better rate limits:
 - **PubMed API**: Requires an API key. Register at [PubMed API](https://www.ncbi.nlm.nih.gov/books/NBK25500/)
 - **DOAJ API**: Requires an API key. Register at [DOAJ API](https://doaj.org/api)
 - **OpenAIRE API**: Requires an API key. Register at [OpenAIRE API](https://api.openaire.eu/)
+
+## Recent Updates
+
+- **Consolidated Academic Sources**: All academic source implementations have been merged into a single file (`academic.py`) for better maintainability
+- **Selective API Search**: Added the ability to search only academic sources, only news sources, or both using the `--academic-only` and `--news-only` flags
+- **Improved Code Organization**: Streamlined the codebase by removing redundant files and improving the overall structure
 
 ## Dependencies
 
