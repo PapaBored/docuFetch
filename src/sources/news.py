@@ -49,12 +49,34 @@ class NewsSource:
             'https://techcrunch.com'
         ]
     
-    def fetch(self, keyword):
+    def fetch(self, keyword, preview_mode=False):
         """
         Fetch news articles for a keyword.
         
         Args:
             keyword: Keyword to search for
+            preview_mode: If True, only count articles without downloading content
+            
+        Returns:
+            list: List of article metadata
+        """
+        # Handle keyword as a list
+        if isinstance(keyword, list):
+            # Search for each keyword separately and combine results
+            all_results = []
+            for k in keyword:
+                all_results.extend(self._fetch_single_keyword(k, preview_mode))
+            return all_results
+        else:
+            return self._fetch_single_keyword(keyword, preview_mode)
+    
+    def _fetch_single_keyword(self, keyword, preview_mode=False):
+        """
+        Fetch news articles for a single keyword.
+        
+        Args:
+            keyword: Keyword to search for
+            preview_mode: If True, only count articles without downloading content
             
         Returns:
             list: List of article metadata
@@ -110,15 +132,17 @@ class NewsSource:
                                 "fetched_at": datetime.now().isoformat()
                             }
                             
-                            # Generate filename for metadata
-                            metadata_filename = f"news_{document['id']}.json"
-                            
-                            # Save metadata
-                            self._save_metadata(document, metadata_filename)
-                            
-                            # Save article text
-                            article_filename = self.download_dir / f"news_{document['id']}.txt"
-                            self._save_article_text(document['text'], article_filename)
+                            # If preview mode, just add to results without saving
+                            if not preview_mode:
+                                # Generate filename for metadata
+                                metadata_filename = f"news_{document['id']}.json"
+                                
+                                # Save metadata
+                                self._save_metadata(document, metadata_filename)
+                                
+                                # Save article text
+                                article_filename = self.download_dir / f"news_{document['id']}.txt"
+                                self._save_article_text(document['text'], article_filename)
                             
                             results.append(document)
                     

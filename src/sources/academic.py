@@ -335,6 +335,27 @@ class ScholarSource(BaseSource):
         Returns:
             list: List of paper metadata
         """
+        # Handle keyword as a list
+        if isinstance(keyword, list):
+            # Search for each keyword separately and combine results
+            all_results = []
+            for k in keyword:
+                all_results.extend(self._fetch_single_keyword(k, preview_mode))
+            return all_results
+        else:
+            return self._fetch_single_keyword(keyword, preview_mode)
+    
+    def _fetch_single_keyword(self, keyword, preview_mode=False):
+        """
+        Fetch papers from Google Scholar for a single keyword.
+        
+        Args:
+            keyword: Keyword to search for
+            preview_mode: If True, only count documents without downloading
+            
+        Returns:
+            list: List of paper metadata
+        """
         logger.info(f"Searching Google Scholar for '{keyword}'")
         
         try:
@@ -355,48 +376,53 @@ class ScholarSource(BaseSource):
                     logger.warning(f"Error filling publication data: {str(e)}")
                     continue
                 
-                # Create document metadata
-                document = {
-                    "id": pub.get('pub_url', '').split('=')[-1] if pub.get('pub_url') else f"scholar_{count}",
-                    "title": pub.get('bib', {}).get('title', 'Unknown Title'),
-                    "authors": pub.get('bib', {}).get('author', []),
-                    "abstract": pub.get('bib', {}).get('abstract', ''),
-                    "url": pub.get('pub_url', ''),
-                    "pdf_url": pub.get('eprint_url', ''),
-                    "published": pub.get('bib', {}).get('pub_year', ''),
-                    "source": "scholar",
-                    "keyword": keyword,
-                    "fetched_at": datetime.now().isoformat(),
-                    "citations": pub.get('num_citations', 0)
-                }
-                
-                # Generate unique ID for deduplication
-                document["unique_id"] = self._generate_unique_id(document)
-                
-                # Check for duplicates
-                if self._is_duplicate(document):
-                    count += 1
-                    continue
-                
-                # Generate filename for metadata
-                metadata_filename = f"scholar_{document['id']}.json"
-                
-                # Save metadata
-                self._save_metadata(document, metadata_filename)
-                
-                # Download PDF if enabled, not in preview mode, and URL available
-                if self.download_pdfs and not preview_mode and document['pdf_url']:
-                    pdf_filename = self.download_dir / f"scholar_{document['id']}.pdf"
+                try:
+                    # Create document metadata
+                    document = {
+                        "id": pub.get('pub_url', '').split('=')[-1] if pub.get('pub_url') else f"scholar_{count}",
+                        "title": pub.get('bib', {}).get('title', 'Unknown Title'),
+                        "authors": pub.get('bib', {}).get('author', []) if isinstance(pub.get('bib', {}).get('author', []), list) else [pub.get('bib', {}).get('author', 'Unknown')],
+                        "abstract": pub.get('bib', {}).get('abstract', ''),
+                        "url": pub.get('pub_url', ''),
+                        "pdf_url": pub.get('eprint_url', ''),
+                        "published": pub.get('bib', {}).get('pub_year', ''),
+                        "source": "scholar",
+                        "keyword": keyword,
+                        "fetched_at": datetime.now().isoformat(),
+                        "citations": pub.get('num_citations', 0)
+                    }
                     
-                    # Check if file already exists
-                    if not pdf_filename.exists():
-                        logger.info(f"Downloading PDF for Scholar paper {document['id']}")
-                        self._download_file(document['pdf_url'], pdf_filename)
-                    else:
-                        logger.info(f"PDF for Scholar paper {document['id']} already exists")
-                
-                results.append(document)
-                count += 1
+                    # Generate unique ID for deduplication
+                    document["unique_id"] = self._generate_unique_id(document)
+                    
+                    # Check for duplicates
+                    if self._is_duplicate(document):
+                        count += 1
+                        continue
+                    
+                    # Generate filename for metadata
+                    metadata_filename = f"scholar_{document['id']}.json"
+                    
+                    # Save metadata if not in preview mode
+                    if not preview_mode:
+                        self._save_metadata(document, metadata_filename)
+                    
+                    # Download PDF if enabled, not in preview mode, and URL available
+                    if self.download_pdfs and not preview_mode and document['pdf_url']:
+                        pdf_filename = self.download_dir / f"scholar_{document['id']}.pdf"
+                        
+                        # Check if file already exists
+                        if not pdf_filename.exists():
+                            logger.info(f"Downloading PDF for Scholar paper {document['id']}")
+                            self._download_file(document['pdf_url'], pdf_filename)
+                        else:
+                            logger.info(f"PDF for Scholar paper {document['id']} already exists")
+                    
+                    results.append(document)
+                    count += 1
+                except Exception as e:
+                    logger.warning(f"Error processing Scholar result: {str(e)}")
+                    continue
                 
                 # Add a small delay to avoid rate limiting
                 time.sleep(2)
